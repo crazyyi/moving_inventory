@@ -1,0 +1,12 @@
+{
+  "sqltools.connections": [
+    {
+      "ssh": "Disabled",
+      "previewLimit": 50,
+      "server": "localhost",
+      "driver": "PostgreSQL",
+      "name": "Moving_inventory",
+      "connectString": "postgresql://moving_db_user:ThCala202512!@localhost:5432/moving_inventory_dev"
+    }
+  ]
+}
