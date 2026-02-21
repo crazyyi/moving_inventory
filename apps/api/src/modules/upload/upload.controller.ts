@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, Query } from '@nestjs/common';
+import { Controller, Post, Body, Get, Query, Inject } from '@nestjs/common';
 import { UploadService } from './upload.service';
 import { IsString, IsOptional } from 'class-validator';
 
@@ -9,7 +9,10 @@ class UploadImageDto {
 
 @Controller('upload')
 export class UploadController {
-  constructor(private readonly uploadService: UploadService) {}
+  @Inject(UploadService)
+  private readonly uploadService: UploadService;
+
+  constructor() { }
 
   @Post('image')
   async uploadImage(@Body() dto: UploadImageDto) {
@@ -22,8 +25,8 @@ export class UploadController {
   }
 
   @Get('sign')
-  async getSignedParams(@Query('folder') folder?: string) {
-    const params = await this.uploadService.getSignedUploadParams(
+  getSignedParams(@Query('folder') folder?: string) {
+    const params = this.uploadService.getSignedUploadParams(
       folder || 'moving-inventory',
     );
     return { success: true, data: params };

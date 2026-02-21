@@ -7,7 +7,13 @@ import {
   Body,
   HttpCode,
   HttpStatus,
+  Inject,
 } from '@nestjs/common';
+import {
+  ApiTags,
+  ApiParam,
+  ApiOperation,
+} from '@nestjs/swagger'; // Added Swagger imports
 import { ItemsService, UpsertRoomItemDto } from './items.service';
 import { InventoryService } from '../inventory/inventory.service';
 import {
@@ -19,6 +25,7 @@ import {
   Min,
 } from 'class-validator';
 
+// 1. Add ApiProperty if you want the DTO fields to show examples in Swagger
 class UpsertItemDto implements UpsertRoomItemDto {
   @IsOptional() @IsString() itemLibraryId?: string;
   @IsString() name: string;
@@ -42,14 +49,23 @@ class UpdateImagesDto {
   @IsArray() images: string[];
 }
 
+@ApiTags('Inventory Items') // Groups these routes in Swagger UI
 @Controller('inventories/:token/rooms/:roomId/items')
+// Define parameters shared by all routes in this controller
+@ApiParam({ name: 'token', description: 'Inventory access token' })
+@ApiParam({ name: 'roomId', description: 'UUID of the room' })
 export class ItemsController {
+  @Inject(ItemsService)
+  private readonly itemsService: ItemsService;
+
+  @Inject(InventoryService)
+  private readonly inventoryService: InventoryService;
+
   constructor(
-    private readonly itemsService: ItemsService,
-    private readonly inventoryService: InventoryService,
   ) { }
 
   @Post()
+  @ApiOperation({ summary: 'Add or update an item in a room' })
   @HttpCode(HttpStatus.CREATED)
   async upsert(
     @Param('token') token: string,
@@ -62,6 +78,8 @@ export class ItemsController {
   }
 
   @Patch(':itemId/quantity')
+  @ApiOperation({ summary: 'Update item quantity' })
+  @ApiParam({ name: 'itemId', description: 'UUID of the item' })
   async updateQuantity(
     @Param('itemId') itemId: string,
     @Body() dto: UpdateQuantityDto,
@@ -74,6 +92,8 @@ export class ItemsController {
   }
 
   @Patch(':itemId/images')
+  @ApiOperation({ summary: 'Update item images' })
+  @ApiParam({ name: 'itemId', description: 'UUID of the item' })
   async updateImages(
     @Param('itemId') itemId: string,
     @Body() dto: UpdateImagesDto,
@@ -83,6 +103,8 @@ export class ItemsController {
   }
 
   @Delete(':itemId')
+  @ApiOperation({ summary: 'Remove an item' })
+  @ApiParam({ name: 'itemId', description: 'UUID of the item' })
   async remove(@Param('itemId') itemId: string) {
     const result = await this.itemsService.deleteItem(itemId);
     return { success: true, data: result };

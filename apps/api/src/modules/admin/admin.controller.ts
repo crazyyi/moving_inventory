@@ -7,18 +7,23 @@ import {
   Query,
   Headers,
   Body,
+  Inject,
 } from '@nestjs/common';
 import { AdminService } from './admin.service';
-import { InventoryService } from '../inventory/inventory.service';
-import { GhlService } from '../ghl/ghl.service';
-
+import { ApiHeader, ApiParam, ApiTags } from '@nestjs/swagger';
+@ApiTags('Admin') // Optional: Groups routes in UI
+@ApiHeader({
+  name: 'x-admin-key',
+  description: 'Admin access key for authentication',
+  required: true,
+})
 @Controller('admin/inventories')
 export class AdminController {
-  constructor(
-    private readonly adminService: AdminService,
-    private readonly inventoryService: InventoryService,
-    private readonly ghlService: GhlService,
-  ) {}
+  @Inject(AdminService)
+  private readonly adminService: AdminService;
+
+  // REMOVE EVERYTHING FROM THE CONSTRUCTOR
+  constructor() { }
 
   @Get('stats')
   async getStats(@Headers('x-admin-key') apiKey: string) {
@@ -35,7 +40,7 @@ export class AdminController {
     @Query('offset') offset = '0',
   ) {
     this.adminService.validateAdminKey(apiKey);
-    const inventoryList = await this.inventoryService.findAll(
+    const inventoryList = await this.adminService.getInventories(
       status,
       parseInt(limit),
       parseInt(offset),
@@ -44,38 +49,40 @@ export class AdminController {
   }
 
   @Get(':inventoryId/summary')
+  @ApiParam({ name: 'inventoryId', type: 'string', description: 'The inventory ID' })
   async getSummary(
     @Headers('x-admin-key') apiKey: string,
     @Param('inventoryId') inventoryId: string,
   ) {
     this.adminService.validateAdminKey(apiKey);
-    const summary = await this.inventoryService.getSummary(inventoryId);
+    const summary = await this.adminService.getInventorySummary(inventoryId);
     return { success: true, data: summary };
   }
 
   @Post(':inventoryId/lock')
+  @ApiParam({ name: 'inventoryId', type: 'string', description: 'The inventory ID' })
   async lockInventory(
     @Headers('x-admin-key') apiKey: string,
     @Param('inventoryId') inventoryId: string,
   ) {
     this.adminService.validateAdminKey(apiKey);
-    const locked = await this.inventoryService.lock(inventoryId);
+    const locked = await this.adminService.lockInventory(inventoryId);
     return { success: true, data: locked };
   }
 
   @Post(':inventoryId/push-ghl')
+  @ApiParam({ name: 'inventoryId', type: 'string', description: 'The inventory ID' })
   async pushToGhl(
     @Headers('x-admin-key') apiKey: string,
     @Param('inventoryId') inventoryId: string,
   ) {
     this.adminService.validateAdminKey(apiKey);
-    const summary = await this.inventoryService.getSummary(inventoryId);
-    const payload = this.ghlService.buildPayload(summary);
-    const result = await this.ghlService.pushToGHL(inventoryId, payload);
+    const result = await this.adminService.pushInventoryToGHL(inventoryId);
     return { success: true, data: result };
   }
 
   @Patch(':inventoryId/notes')
+  @ApiParam({ name: 'inventoryId', type: 'string', description: 'The inventory ID' })
   async addInternalNote(
     @Headers('x-admin-key') apiKey: string,
     @Param('inventoryId') inventoryId: string,

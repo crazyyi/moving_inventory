@@ -1,19 +1,27 @@
 import { Injectable, BadRequestException, Inject } from '@nestjs/common';
-import * as crypto from 'crypto';
-import { NodePgDatabase } from 'node_modules/drizzle-orm/node-postgres/index.cjs';
+import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '@moving/schema';
 import { DRIZZLE } from '@moving/constants';
-import axios from 'axios';
+import { v2 as cloudinary } from 'cloudinary';
 
 @Injectable()
 export class UploadService {
-  private readonly cloudName = process.env.CLOUDINARY_CLOUD_NAME;
-  private readonly apiKey = process.env.CLOUDINARY_API_KEY;
-  private readonly apiSecret = process.env.CLOUDINARY_API_SECRET;
+  private cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  private apiKey = process.env.CLOUDINARY_API_KEY;
+  private apiSecret = process.env.CLOUDINARY_API_SECRET;
 
   constructor(
-    @Inject(DRIZZLE as string) private db: NodePgDatabase<typeof schema>,
-  ) { }
+    @Inject(DRIZZLE) private db: NodePgDatabase<typeof schema>,
+  ) {
+    // Correctly initialize Cloudinary in the constructor body
+    if (this.cloudName && this.apiKey && this.apiSecret) {
+      cloudinary.config({
+        cloud_name: this.cloudName,
+        api_key: this.apiKey,
+        api_secret: this.apiSecret,
+      });
+    }
+  }
 
   async uploadBase64Image(
     base64Data: string,
@@ -24,43 +32,40 @@ export class UploadService {
       throw new BadRequestException('Image upload not configured');
     }
 
-    const timestamp = Math.round(Date.now() / 1000);
-    const publicId = `${folder}/${inventoryToken || 'misc'}/${Date.now()}`;
+    // FORCE the prefix if it's missing
+    // This tells Cloudinary: "This is DATA, not a file on my disk"
+    const formattedData = base64Data.startsWith('data:')
+      ? base64Data
+      : `data:image/jpeg;base64,${base64Data}`;
 
-    const signString = `folder=${folder}&public_id=${publicId}&timestamp=${timestamp}${this.apiSecret}`;
-    const signature = crypto
-      .createHash('sha1')
-      .update(signString)
-      .digest('hex');
+    try {
+      const result = await cloudinary.uploader.upload(formattedData, {
+        // ADD THE PRESET HERE
+        upload_preset: 'moving_inventory_preset',
 
-    const formData = new URLSearchParams({
-      file: base64Data.startsWith('data:')
-        ? base64Data
-        : `data:image/jpeg;base64,${base64Data}`,
-      upload_preset: 'moving_inventory',
-      public_id: publicId,
-      folder,
-      timestamp: String(timestamp),
-      api_key: this.apiKey,
-      signature,
-    });
+        // Other options
+        folder: `${folder}/${inventoryToken || 'misc'}`,
+        resource_type: 'auto',
+      });
 
-    const response = await axios.post<any>(
-      `https://api.cloudinary.com/v1_1/${this.cloudName}/image/upload`,
-      Object.fromEntries(formData),
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
-    );
-
-    return response.data.secure_url;
+      return result.secure_url;
+    } catch (error) {
+      throw new BadRequestException(error.message);
+    }
   }
 
+  /**
+   * Use this if you want the Frontend to upload directly to Cloudinary
+   * without passing large base64 strings through your NestJS API
+   */
   getSignedUploadParams(folder = 'moving-inventory') {
-    const timestamp = Math.round(Date.now() / 1000);
-    const signString = `folder=${folder}&timestamp=${timestamp}${this.apiSecret}`;
-    const signature = crypto
-      .createHash('sha1')
-      .update(signString)
-      .digest('hex');
+    if (!this.apiSecret) throw new BadRequestException('API Secret missing');
+
+    const timestamp = Math.round(new Date().getTime() / 1000);
+    const signature = cloudinary.utils.api_sign_request(
+      { timestamp, folder },
+      this.apiSecret
+    );
 
     return {
       timestamp,

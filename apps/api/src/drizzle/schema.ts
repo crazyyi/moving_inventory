@@ -145,8 +145,8 @@ export const roomItems = pgTable(
     isFragile: boolean('is_fragile').notNull().default(false),
     isHighValue: boolean('is_high_value').notNull().default(false),
 
-    // Images
-    images: jsonb('images').$type<string[]>().default([]),
+    // Images - Cloudinary URLs stored as text array
+    images: text('images').array().default([]),
 
     // Notes
     notes: text('notes'),

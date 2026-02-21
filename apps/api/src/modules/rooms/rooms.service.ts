@@ -1,22 +1,36 @@
-import {
-  Injectable,
-  NotFoundException,
-  ForbiddenException,
-  Inject,
-} from '@nestjs/common';
+// apps/api/src/modules/rooms/rooms.service.ts
+import { Injectable, NotFoundException, ForbiddenException, Inject } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import * as schema from '@moving/schema';
-import { NodePgDatabase } from 'node_modules/drizzle-orm/node-postgres/index.cjs';
+import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { DRIZZLE } from '@moving/constants';
+import { InventoryService } from '../inventory/inventory.service';
+import { UpdateRoomDto } from './dto/rooms.dto';
 
 const { inventories, rooms, roomItems } = schema;
 
 @Injectable()
 export class RoomsService {
-  constructor(
-    // Inject the DB instance using the token you defined
-    @Inject(DRIZZLE as string) private db: NodePgDatabase<typeof schema>,
-  ) { }
+  @Inject(DRIZZLE)
+  private readonly db: NodePgDatabase<typeof schema>;
+
+  @Inject(InventoryService)
+  private readonly inventoryService: InventoryService;
+
+  // ─── Token Helpers ────────────────────────────────────────────────────────
+  // This translates the public token to the internal ID safely
+
+  async getRoomsByToken(token: string) {
+    const inventory = await this.inventoryService.findByToken(token);
+    return this.getRoomsForInventory(inventory.id);
+  }
+
+  async createRoomByToken(token: string, type: string, customName?: string) {
+    const inventory = await this.inventoryService.findByToken(token);
+    return this.createRoom(inventory.id, type, customName);
+  }
+
+  // ─── Existing Logic ───────────────────────────────────────────────────────
 
   async ensureNotLocked(inventoryId: string) {
     const inventory = await this.db.query.inventories.findFirst({
@@ -30,7 +44,6 @@ export class RoomsService {
 
   async createRoom(inventoryId: string, type: string, customName?: string) {
     await this.ensureNotLocked(inventoryId);
-
     const existingRooms = await this.db.query.rooms.findMany({
       where: eq(rooms.inventoryId, inventoryId),
     });
@@ -48,10 +61,7 @@ export class RoomsService {
     return room;
   }
 
-  async updateRoom(
-    roomId: string,
-    data: { customName?: string; isComplete?: boolean; sortOrder?: number },
-  ) {
+  async updateRoom(roomId: string, data: UpdateRoomDto) {
     const [updated] = await this.db
       .update(rooms)
       .set({ ...data, updatedAt: new Date() })
@@ -66,11 +76,10 @@ export class RoomsService {
     const room = await this.db.query.rooms.findFirst({
       where: eq(rooms.id, roomId),
     });
-
     if (!room) throw new NotFoundException('Room not found');
+
     await this.ensureNotLocked(room.inventoryId);
 
-    // Cascade delete items
     await this.db.delete(roomItems).where(eq(roomItems.roomId, roomId));
     await this.db.delete(rooms).where(eq(rooms.id, roomId));
 

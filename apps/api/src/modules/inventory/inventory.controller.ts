@@ -37,24 +37,19 @@ export class InventoryController {
     };
   }
 
-  // GET /api/inventories/:token — Get inventory by token
-  @Get(':token')
+  // GET /api/inventories/:token/summary — Get full summary (SPECIFIC - must come before generic :token route)
+  @Get(':token/summary')
   @ApiParam({ name: 'token', type: 'string', description: 'The unique inventory token' })
-  async findByToken(@Param('token') token: string) {
+  async summary(@Param('token') token: string) {
     const inventory = await this.inventoryService.findByToken(token);
-    return { success: true, data: inventory };
+    const summary = await this.inventoryService.getSummary(inventory.id);
+    return { success: true, data: summary };
   }
 
-  // PATCH /api/inventories/:token — Update customer info
-  @Patch(':token')
-  async update(@Param('token') token: string, @Body() dto: UpdateInventoryDto) {
-    const updated = await this.inventoryService.update(token, dto);
-    return { success: true, data: updated };
-  }
-
-  // POST /api/inventories/:token/submit — Submit the inventory
+  // POST /api/inventories/:token/submit — Submit the inventory (SPECIFIC - must come before generic :token route)
   @Post(':token/submit')
   @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'token', type: 'string', description: 'The unique inventory token' })
   async submit(@Param('token') token: string) {
     const submitted = await this.inventoryService.submit(token);
     return {
@@ -64,11 +59,19 @@ export class InventoryController {
     };
   }
 
-  // GET /api/inventories/:token/summary — Get full summary
-  @Get(':token/summary')
-  async summary(@Param('token') token: string) {
+  // GET /api/inventories/:token — Get inventory by token (GENERIC - must come after specific routes)
+  @Get(':token')
+  @ApiParam({ name: 'token', type: 'string', description: 'The unique inventory token' })
+  async findByToken(@Param('token') token: string) {
     const inventory = await this.inventoryService.findByToken(token);
-    const summary = await this.inventoryService.getSummary(inventory.id);
-    return { success: true, data: summary };
+    return { success: true, data: inventory };
+  }
+
+  // PATCH /api/inventories/:token — Update customer info (GENERIC - must come after specific routes)
+  @Patch(':token')
+  @ApiParam({ name: 'token', type: 'string', description: 'The unique inventory token' })
+  async update(@Param('token') token: string, @Body() dto: UpdateInventoryDto) {
+    const updated = await this.inventoryService.update(token, dto);
+    return { success: true, data: updated };
   }
 }

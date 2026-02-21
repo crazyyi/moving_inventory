@@ -1,9 +1,14 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, Inject } from '@nestjs/common'; // 1. Import Inject
 import { ItemsService } from './items.service';
 
 @Controller('item-library')
 export class ItemLibraryController {
-  constructor(private readonly itemsService: ItemsService) {}
+  // 2. Inject the service as a property
+  @Inject(ItemsService)
+  private readonly itemsService: ItemsService;
+
+  // 3. Keep the constructor empty or remove it
+  constructor() { }
 
   @Get()
   async search(
@@ -11,7 +16,7 @@ export class ItemLibraryController {
     @Query('category') category?: string,
     @Query('roomType') roomType?: string,
   ) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    // Now "this.itemsService" will be correctly defined
     const items = await this.itemsService.searchLibrary(
       query,
       category,
@@ -22,6 +27,7 @@ export class ItemLibraryController {
 
   @Get('categories')
   async getCategories() {
+    // This was the line causing the crash
     const categories = await this.itemsService.getCategories();
     return { success: true, data: categories };
   }

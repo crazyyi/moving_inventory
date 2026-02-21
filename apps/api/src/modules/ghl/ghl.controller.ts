@@ -7,13 +7,14 @@ import {
 } from '@nestjs/common';
 import { GhlService } from './ghl.service';
 import { InventoryService } from '../inventory/inventory.service';
+import { ApiParam } from '@nestjs/swagger';
 
 @Controller('admin/ghl')
 export class GhlController {
   constructor(
     private readonly ghlService: GhlService,
     private readonly inventoryService: InventoryService,
-  ) {}
+  ) { }
 
   private validateAdminKey(apiKey: string) {
     if (apiKey !== process.env.ADMIN_API_KEY) {
@@ -22,6 +23,7 @@ export class GhlController {
   }
 
   @Post('push/:inventoryId')
+  @ApiParam({ name: 'inventoryId', type: 'string', description: 'The inventory ID' })
   async pushInventory(
     @Param('inventoryId') inventoryId: string,
     @Headers('x-admin-key') apiKey: string,

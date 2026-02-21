@@ -1,49 +1,32 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Patch,
-  Delete,
-  Param,
-  Body,
-  HttpCode,
-  HttpStatus,
-} from '@nestjs/common';
+// apps/api/src/modules/rooms/rooms.controller.ts
+import { Controller, Get, Post, Patch, Delete, Param, Body, HttpCode, HttpStatus, Inject } from '@nestjs/common';
+import { ApiParam } from '@nestjs/swagger';
 import { RoomsService } from './rooms.service';
-import { InventoryService } from '../inventory/inventory.service';
-import { IsString, IsOptional, IsBoolean, IsNumber } from 'class-validator';
-
-class CreateRoomDto {
-  @IsString() type: string;
-  @IsOptional() @IsString() customName?: string;
-}
-
-class UpdateRoomDto {
-  @IsOptional() @IsString() customName?: string;
-  @IsOptional() @IsBoolean() isComplete?: boolean;
-  @IsOptional() @IsNumber() sortOrder?: number;
-}
+import { InventoryService } from '../inventory/inventory.service'
+import { CreateRoomDto, UpdateRoomDto } from './dto/rooms.dto';
 
 @Controller('inventories/:token/rooms')
 export class RoomsController {
-  constructor(
-    private readonly roomsService: RoomsService,
-    private readonly inventoryService: InventoryService,
-  ) {}
+  @Inject(RoomsService)
+  private readonly roomsService: RoomsService;
+
+  // Use property injection to avoid the "undefined" race condition
+  @Inject(InventoryService)
+  private readonly inventoryService: InventoryService;
 
   @Get()
+  @ApiParam({ name: 'token', type: 'string' })
   async findAll(@Param('token') token: string) {
-    const inventory = await this.inventoryService.findByToken(token);
-    const roomList = await this.roomsService.getRoomsForInventory(inventory.id);
+    const roomList = await this.roomsService.getRoomsByToken(token);
     return { success: true, data: roomList };
   }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @ApiParam({ name: 'token', type: 'string' })
   async create(@Param('token') token: string, @Body() dto: CreateRoomDto) {
-    const inventory = await this.inventoryService.findByToken(token);
-    const room = await this.roomsService.createRoom(
-      inventory.id,
+    const room = await this.roomsService.createRoomByToken(
+      token,
       dto.type,
       dto.customName,
     );
@@ -51,8 +34,8 @@ export class RoomsController {
   }
 
   @Patch(':roomId')
+  @ApiParam({ name: 'token', type: 'string' })
   async update(
-    @Param('token') token: string,
     @Param('roomId') roomId: string,
     @Body() dto: UpdateRoomDto,
   ) {
@@ -61,7 +44,8 @@ export class RoomsController {
   }
 
   @Delete(':roomId')
-  async remove(@Param('token') token: string, @Param('roomId') roomId: string) {
+  @ApiParam({ name: 'token', type: 'string' })
+  async remove(@Param('roomId') roomId: string) {
     const result = await this.roomsService.deleteRoom(roomId);
     return { success: true, data: result };
   }

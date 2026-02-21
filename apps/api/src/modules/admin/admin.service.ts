@@ -3,6 +3,8 @@ import { eq } from 'drizzle-orm';
 import * as schema from '../../drizzle/schema';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { DRIZZLE } from '@moving/constants';
+import { InventoryService } from '../inventory/inventory.service';
+import { GhlService } from '../ghl/ghl.service';
 
 const { inventories } = schema;
 
@@ -15,10 +17,18 @@ const { inventories } = schema;
  */
 @Injectable()
 export class AdminService {
-  constructor(
-    // Inject the DB instance using the token you defined
-    @Inject(DRIZZLE) private db: NodePgDatabase<typeof schema>,
-  ) { }
+  // 1. Database remains a token-based injection
+  @Inject(DRIZZLE)
+  private readonly db: NodePgDatabase<typeof schema>;
+
+  // 2. Use @Inject for sibling services to bypass constructor timing issues
+  @Inject(InventoryService)
+  private readonly inventoryService: InventoryService;
+
+  @Inject(GhlService)
+  private readonly ghlService: GhlService;
+
+  constructor() { } // Keep constructor empty
   // ─── Auth ─────────────────────────────────────────────────────────────────
 
   /**
@@ -61,21 +71,45 @@ export class AdminService {
       columns: {
         status: true,
         isLocked: true,
-        totalItems: true,
-        ghlSubmittedAt: true,
+        totalCuFt: true,
+        totalWeight: true,
       },
     }).execute();
 
     return {
-      total: all.length,
-      byStatus: {
-        draft: all.filter((i) => i.status === 'draft').length,
-        in_progress: all.filter((i) => i.status === 'in_progress').length,
-        submitted: all.filter((i) => i.status === 'submitted').length,
-        locked: all.filter((i) => i.status === 'locked').length,
-      },
-      ghlPushed: all.filter((i) => i.ghlSubmittedAt !== null).length,
-      totalItemsTracked: all.reduce((sum, i) => sum + (i.totalItems ?? 0), 0),
+      totalInventories: all.length,
+      draftCount: all.filter((i) => i.status === 'draft').length,
+      submittedCount: all.filter((i) => i.status === 'submitted').length,
+      lockedCount: all.filter((i) => i.status === 'locked').length,
+      totalCuFt: all.reduce((sum, i) => sum + (parseFloat(i.totalCuFt || '0')), 0),
+      totalWeight: all.reduce((sum, i) => sum + (parseFloat(i.totalWeight || '0')), 0),
     };
+  }
+
+  async getInventories(status?: string, limit?: number, offset?: number) {
+    return this.inventoryService.findAll(status, limit, offset);
+  }
+
+  async getInventorySummary(inventoryId: string) {
+    // You can add admin-specific logging or extra checks here later
+    return await this.inventoryService.getSummary(inventoryId);
+  }
+
+  async lockInventory(inventoryId: string) {
+    // This maintains the link to your existing inventory logic
+    return await this.inventoryService.lock(inventoryId);
+  }
+
+  async pushInventoryToGHL(inventoryId: string) {
+    // 1. Get the summary (using the logic we just moved)
+    const summary = await this.inventoryService.getSummary(inventoryId);
+
+    // 2. Build the payload
+    const payload = this.ghlService.buildPayload(summary);
+
+    // 3. Push to GHL
+    const result = await this.ghlService.pushToGHL(inventoryId, payload);
+
+    return result;
   }
 }
