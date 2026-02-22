@@ -3,6 +3,7 @@ import { and, eq, ilike, or, sql } from 'drizzle-orm';
 import * as schema from '@moving/schema';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { DRIZZLE } from '@moving/constants';
+import { InventoryService } from '../inventory/inventory.service';
 
 export interface UpsertRoomItemDto {
   itemLibraryId?: string;
@@ -19,14 +20,26 @@ export interface UpsertRoomItemDto {
   notes?: string;
 }
 
-const { inventories, roomItems, itemLibrary } = schema;
+const { inventories, rooms, roomItems, itemLibrary } = schema;
 
 @Injectable()
 export class ItemsService {
   constructor(
     // Inject the DB instance using the token you defined
     @Inject(DRIZZLE as string) private db: NodePgDatabase<typeof schema>,
+    @Inject(InventoryService) private inventoryService: InventoryService,
   ) { }
+  // ─── Room Name Helper ─────────────────────────────────────────────────────
+
+  private async getRoomName(roomId: string): Promise<string> {
+    const room = await this.db
+      .select({ customName: rooms.customName, type: rooms.type })
+      .from(rooms)
+      .where(eq(rooms.id, roomId))
+      .then((res) => res[0]);
+    return room?.customName || room?.type?.replace(/_/g, ' ') || 'Unknown Room';
+  }
+
   // ─── Item Library ─────────────────────────────────────────────────────────
 
   async searchLibrary(query?: string, category?: string, roomType?: string) {
@@ -81,6 +94,7 @@ export class ItemsService {
     const weightPerItem = dto.weightPerItem ?? 0;
     const totalCuFt = cuFtPerItem * dto.quantity;
     const totalWeight = weightPerItem * dto.quantity;
+    const roomName = await this.getRoomName(roomId);
 
     // Check if item from same library already exists in this room
     if (dto.itemLibraryId) {
@@ -108,6 +122,20 @@ export class ItemsService {
           })
           .where(eq(roomItems.id, existing.id))
           .returning();
+
+        // Log the update
+        await this.inventoryService.logAction(inventoryId, 'item_updated', 'customer', {
+          itemName: dto.name,
+          roomName,
+          quantity: dto.quantity,
+          changes: {
+            quantity: {
+              old: existing.quantity,
+              new: dto.quantity,
+            },
+          },
+        });
+
         await this.recalculateInventoryTotals(inventoryId);
         return updated;
       }
@@ -135,6 +163,15 @@ export class ItemsService {
       })
       .returning();
 
+    // Log the new item creation
+    await this.inventoryService.logAction(inventoryId, 'item_created', 'customer', {
+      itemName: dto.name,
+      roomName,
+      category: dto.category,
+      quantity: dto.quantity,
+      hasPhotos: (dto.images && dto.images.length > 0),
+    });
+
     await this.recalculateInventoryTotals(inventoryId);
     return item;
   }
@@ -147,10 +184,18 @@ export class ItemsService {
       .then((res) => res[0]);
 
     if (!existing) throw new NotFoundException('Item not found');
+    const existingRoomName = await this.getRoomName(existing.roomId);
 
     if (quantity <= 0) {
       // Delete if quantity is 0
       await this.db.delete(roomItems).where(eq(roomItems.id, itemId));
+
+      // Log the deletion
+      await this.inventoryService.logAction(existing.inventoryId, 'item_deleted', 'customer', {
+        itemName: existing.name,
+        roomName: existingRoomName,
+      });
+
       await this.recalculateInventoryTotals(existing.inventoryId);
       return { deleted: true };
     }
@@ -169,18 +214,57 @@ export class ItemsService {
       .where(eq(roomItems.id, itemId))
       .returning();
 
+    // Log the quantity update
+    if (quantity !== existing.quantity) {
+      await this.inventoryService.logAction(existing.inventoryId, 'item_updated', 'customer', {
+        itemName: existing.name,
+        roomName: existingRoomName,
+        quantity,
+        changes: {
+          quantity: {
+            old: existing.quantity,
+            new: quantity,
+          },
+        },
+      });
+    }
+
     await this.recalculateInventoryTotals(existing.inventoryId);
     return updated;
   }
 
   async updateItemImages(itemId: string, images: string[]) {
+    const existing = await this.db
+      .select()
+      .from(roomItems)
+      .where(eq(roomItems.id, itemId))
+      .then((res) => res[0]);
+
+    if (!existing) throw new NotFoundException('Item not found');
+    const imageRoomName = await this.getRoomName(existing.roomId);
+
     const [updated] = await this.db
       .update(roomItems)
       .set({ images, updatedAt: new Date() })
       .where(eq(roomItems.id, itemId))
       .returning();
 
-    if (!updated) throw new NotFoundException('Item not found');
+    // Log the image update
+    const oldPhotoCount = (existing.images as string[])?.length || 0;
+    const newPhotoCount = images.length;
+    if (newPhotoCount !== oldPhotoCount) {
+      await this.inventoryService.logAction(existing.inventoryId, 'item_updated', 'customer', {
+        itemName: existing.name,
+        roomName: imageRoomName,
+        changes: {
+          photos: {
+            old: `${oldPhotoCount} photo(s)`,
+            new: `${newPhotoCount} photo(s)`,
+          },
+        },
+      });
+    }
+
     return updated;
   }
 
@@ -192,8 +276,16 @@ export class ItemsService {
       .then((res) => res[0]);
 
     if (!item) throw new NotFoundException('Item not found');
+    const deleteRoomName = await this.getRoomName(item.roomId);
 
     await this.db.delete(roomItems).where(eq(roomItems.id, itemId));
+
+    // Log the deletion
+    await this.inventoryService.logAction(item.inventoryId, 'item_deleted', 'customer', {
+      itemName: item.name,
+      roomName: deleteRoomName,
+    });
+
     await this.recalculateInventoryTotals(item.inventoryId);
 
     return { deleted: true };

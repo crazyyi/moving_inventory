@@ -1,12 +1,12 @@
 import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import * as schema from '../../drizzle/schema';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { DRIZZLE } from '@moving/constants';
 import { InventoryService } from '../inventory/inventory.service';
 import { GhlService } from '../ghl/ghl.service';
 
-const { inventories } = schema;
+const { inventories, auditLog } = schema;
 
 /**
  * AdminService handles all admin-specific business logic.
@@ -111,5 +111,19 @@ export class AdminService {
     const result = await this.ghlService.pushToGHL(inventoryId, payload);
 
     return result;
+  }
+
+  // ─── Audit Logs ───────────────────────────────────────────────────────────
+
+  async getAuditLogs(inventoryId: string, limit: number = 20) {
+    const logs = await this.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.inventoryId, inventoryId))
+      .orderBy(desc(auditLog.createdAt))
+      .limit(limit)
+      .execute();
+
+    return logs;
   }
 }

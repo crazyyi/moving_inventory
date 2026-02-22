@@ -132,4 +132,7 @@ export const adminAPI = {
 
   updateNotes: (inventoryId: string, notes: string) =>
     apiClient.patch(`/admin/inventories/${inventoryId}/notes`, { notes }),
+
+  getAuditLogs: (inventoryId: string, limit: number = 20) =>
+    apiClient.get(`/admin/inventories/${inventoryId}/audit-logs`, { params: { limit } }),
 };

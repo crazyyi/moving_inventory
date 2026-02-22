@@ -4,10 +4,11 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { inventoryAPI } from '@/lib/api-client';
 import { useAPICall } from '@/lib/hooks';
-import { Package, Plus, LogOut, Send, Lock } from 'lucide-react';
+import { Package, Plus, LogOut, Send, Lock, Edit2 } from 'lucide-react';
 import Link from 'next/link';
 import RoomList from './components/RoomList';
 import CreateRoomModal from './components/CreateRoomModal';
+import EditInventoryModal from './components/EditInventoryModal';
 import { Inventory, RoomSummary } from '@/types';
 
 export default function InventoryPage() {
@@ -19,6 +20,7 @@ export default function InventoryPage() {
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [isLoadingInventory, setIsLoadingInventory] = useState(true);
   const [showCreateRoom, setShowCreateRoom] = useState(false);
+  const [showEditInventory, setShowEditInventory] = useState(false);
   const callAPI = useAPICall();
 
   useEffect(() => {
@@ -52,6 +54,15 @@ export default function InventoryPage() {
       setRooms(result.data.data.roomSummaries || []);
     }
     setShowCreateRoom(false);
+  };
+
+  const handleInventoryUpdated = async () => {
+    const result = await callAPI(() => inventoryAPI.getSummary(token));
+    if (result?.data?.data) {
+      setInventory(result.data.data.inventory);
+      setRooms(result.data.data.roomSummaries || []);
+    }
+    setShowEditInventory(false);
   };
 
   const handleLogout = () => {
@@ -126,6 +137,15 @@ export default function InventoryPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            {!inventory.isLocked && (
+              <button
+                onClick={() => setShowEditInventory(true)}
+                className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+              >
+                <Edit2 className="w-5 h-5" />
+                Edit
+              </button>
+            )}
             {inventory.status === 'draft' || inventory.status === 'in_progress' ? (
               <button
                 onClick={handleSubmit}
@@ -210,6 +230,16 @@ export default function InventoryPage() {
           token={token}
           onClose={() => setShowCreateRoom(false)}
           onSuccess={handleRoomCreated}
+        />
+      )}
+
+      {/* Edit Inventory Modal */}
+      {showEditInventory && inventory && (
+        <EditInventoryModal
+          token={token}
+          inventory={inventory}
+          onClose={() => setShowEditInventory(false)}
+          onSuccess={handleInventoryUpdated}
         />
       )}
     </div>

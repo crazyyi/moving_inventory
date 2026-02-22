@@ -5,11 +5,12 @@ import { useRouter, useParams } from 'next/navigation';
 import { adminAPI } from '@/lib/api-client';
 import { useAuthStore } from '@/lib/stores';
 import { useAPICall } from '@/lib/hooks';
-import { ArrowLeft, Lock, Send } from 'lucide-react';
+import { ArrowLeft, Lock, Send, ChevronLeft, ChevronRight, Bell } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { InventorySummaryResponse, Room, RoomItem } from '@/types';
 import PhotoViewerModal from '@/app/inventory/[token]/components/PhotoViewerModal';
+import RecentActivities from '../components/RecentActivities';
 
 export default function AdminInventoryDetail() {
   const params = useParams();
@@ -20,6 +21,13 @@ export default function AdminInventoryDetail() {
   const [inventory, setInventory] = useState<InventorySummaryResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [viewingPhotosItem, setViewingPhotosItem] = useState<(RoomItem & { roomId?: string }) | null>(null);
+  const [showActivitySidebar, setShowActivitySidebar] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [lastViewedAt, setLastViewedAt] = useState<Date | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const stored = localStorage.getItem(`activities-viewed-${inventoryId}`);
+    return stored ? new Date(stored) : null;
+  });
   const callAPI = useAPICall();
 
   const loadInventory = useCallback(async () => {
@@ -33,6 +41,23 @@ export default function AdminInventoryDetail() {
   useEffect(() => {
     hydrate();
   }, [hydrate]);
+
+  // Load the last-viewed timestamp from localStorage on mount
+  // (handled via lazy useState initializer above)
+
+  // Pre-fetch activity count on mount so the badge is accurate before sidebar opens
+  useEffect(() => {
+    if (!adminKey || !inventoryId) return;
+    adminAPI.getAuditLogs(inventoryId, 20).then((result) => {
+      const logs: Array<{ createdAt: string }> = result?.data?.data ?? [];
+      const stored = localStorage.getItem(`activities-viewed-${inventoryId}`);
+      const viewed = stored ? new Date(stored) : null;
+      const count = viewed
+        ? logs.filter((l) => new Date(l.createdAt) > viewed).length
+        : 0; // first visit — no prior baseline, nothing is unread yet
+      setUnreadCount(count);
+    }).catch(() => {});
+  }, [adminKey, inventoryId]);
 
   useEffect(() => {
     if (!adminKey) {
@@ -101,164 +126,220 @@ export default function AdminInventoryDetail() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-8">
-        {/* Summary Cards */}
-        <div className="grid md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white rounded-lg p-6 shadow-md">
-            <p className="text-gray-600 text-sm mb-1">Status</p>
-            <p className="text-2xl font-bold text-gray-900">
-              {inventoryData.status?.replace('_', ' ').toUpperCase()}
-            </p>
-          </div>
-          <div className="bg-white rounded-lg p-6 shadow-md">
-            <p className="text-gray-600 text-sm mb-1">Total Items</p>
-            <p className="text-2xl font-bold text-gray-900">{inventoryData.totalItems || 0}</p>
-          </div>
-          <div className="bg-white rounded-lg p-6 shadow-md">
-            <p className="text-gray-600 text-sm mb-1">Total Cubic Feet</p>
-            <p className="text-2xl font-bold text-gray-900">
-              {Number(inventoryData.totalCuFt).toFixed(1) || 0}
-            </p>
-          </div>
-          <div className="bg-white rounded-lg p-6 shadow-md">
-            <p className="text-gray-600 text-sm mb-1">Total Weight</p>
-            <p className="text-2xl font-bold text-gray-900">
-              {Number(inventoryData.totalWeight).toFixed(0) || 0} lbs
-            </p>
-          </div>
-        </div>
-
-        {/* Details */}
-        <div className="grid md:grid-cols-2 gap-8 mb-8">
-          {/* Customer Info */}
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Customer Information</h2>
-            <div className="space-y-3">
-              <div>
-                <p className="text-gray-600 text-sm">Name</p>
-                <p className="font-semibold text-gray-900">{inventoryData.customerName}</p>
-              </div>
-              <div>
-                <p className="text-gray-600 text-sm">Email</p>
-                <p className="font-semibold text-gray-900">{inventoryData.customerEmail}</p>
-              </div>
-              <div>
-                <p className="text-gray-600 text-sm">Phone</p>
-                <p className="font-semibold text-gray-900">{inventoryData.customerPhone}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Move Info */}
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Move Information</h2>
-            <div className="space-y-3">
-              <div>
-                <p className="text-gray-600 text-sm">Move Date</p>
-                <p className="font-semibold text-gray-900">
-                  {new Date(inventoryData.moveDate || '').toLocaleDateString()}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Main Content - Takes 3 columns on large screens */}
+          <div className="lg:col-span-3">
+            {/* Summary Cards */}
+            <div className="grid md:grid-cols-4 gap-4 mb-8">
+              <div className="bg-white rounded-lg p-6 shadow-md">
+                <p className="text-gray-600 text-sm mb-1">Status</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {inventoryData.status?.replace('_', ' ').toUpperCase()}
                 </p>
               </div>
-              <div>
-                <p className="text-gray-600 text-sm">From</p>
-                <p className="font-semibold text-gray-900">{inventoryData.fromAddress}</p>
+              <div className="bg-white rounded-lg p-6 shadow-md">
+                <p className="text-gray-600 text-sm mb-1">Total Items</p>
+                <p className="text-2xl font-bold text-gray-900">{inventoryData.totalItems || 0}</p>
               </div>
-              <div>
-                <p className="text-gray-600 text-sm">To</p>
-                <p className="font-semibold text-gray-900">{inventoryData.toAddress}</p>
+              <div className="bg-white rounded-lg p-6 shadow-md">
+                <p className="text-gray-600 text-sm mb-1">Total Cubic Feet</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {Number(inventoryData.totalCuFt).toFixed(1) || 0}
+                </p>
+              </div>
+              <div className="bg-white rounded-lg p-6 shadow-md">
+                <p className="text-gray-600 text-sm mb-1">Total Weight</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {Number(inventoryData.totalWeight).toFixed(0) || 0} lbs
+                </p>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Rooms */}
-        {inventoryData.rooms && inventoryData.rooms.length > 0 && (
-          <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Rooms</h2>
-            <div className="space-y-4">
-              {inventoryData.rooms.map((room: Room) => (
-                <details key={room.id} className="border border-gray-200 rounded-lg p-4">
-                  <summary className="cursor-pointer font-semibold text-gray-900">
-                    {room.customName || room.type} ({room.items?.length || 0} items)
-                  </summary>
-                  <div className="mt-4 space-y-2">
-                    {room.items?.map((item: RoomItem) => (
-                      <div key={item.id} className="text-sm text-gray-600 pl-4 border-l-2 border-gray-200">
-                        <div className="font-medium text-gray-900">{item.name}</div>
-                        <div className="text-xs mb-2">
-                          Qty: {item.quantity} {item.totalCuFt && `| Vol: ${Number(item.totalCuFt).toFixed(1)} cu ft`}
-                        </div>
-
-                        {/* Photo Thumbnails */}
-                        {item.images && item.images.length > 0 && (
-                          <div className="flex gap-2 mt-3 flex-wrap">
-                            {item.images.map((photo, idx) => (
-                              <button
-                                key={idx}
-                                onClick={() => setViewingPhotosItem({ ...item, roomId: room.id })}
-                                className="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-300 hover:border-blue-500 hover:shadow-md transition-all hover:scale-105"
-                                title="Click to view all photos"
-                              >
-                                <Image
-                                  src={photo}
-                                  alt={`${item.name} photo ${idx + 1}`}
-                                  fill
-                                  className="object-contain"
-                                />
-                                {idx === 0 && (item.images?.length || 0) > 1 && (
-                                  <div className="absolute top-1 right-1 bg-black/50 text-white text-xs rounded px-1">
-                                    +{(item.images?.length || 0) - 1}
-                                  </div>
-                                )}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+            {/* Details */}
+            <div className="grid md:grid-cols-2 gap-8 mb-8">
+              {/* Customer Info */}
+              <div className="bg-white rounded-lg shadow-md p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-4">Customer Information</h2>
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-gray-600 text-sm">Name</p>
+                    <p className="font-semibold text-gray-900">{inventoryData.customerName}</p>
                   </div>
-                </details>
-              ))}
+                  <div>
+                    <p className="text-gray-600 text-sm">Email</p>
+                    <p className="font-semibold text-gray-900">{inventoryData.customerEmail}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600 text-sm">Phone</p>
+                    <p className="font-semibold text-gray-900">{inventoryData.customerPhone}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Move Info */}
+              <div className="bg-white rounded-lg shadow-md p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-4">Move Information</h2>
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-gray-600 text-sm">Move Date</p>
+                    <p className="font-semibold text-gray-900">
+                      {new Date(inventoryData.moveDate || '').toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600 text-sm">From</p>
+                    <p className="font-semibold text-gray-900">{inventoryData.fromAddress}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600 text-sm">To</p>
+                    <p className="font-semibold text-gray-900">{inventoryData.toAddress}</p>
+                  </div>
+                </div>
+              </div>
             </div>
+
+            {/* Rooms */}
+            {inventoryData.rooms && inventoryData.rooms.length > 0 && (
+              <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+                <h2 className="text-xl font-bold text-gray-900 mb-4">Rooms</h2>
+                <div className="space-y-4">
+                  {inventoryData.rooms.map((room: Room) => (
+                    <details key={room.id} className="border border-gray-200 rounded-lg p-4">
+                      <summary className="cursor-pointer font-semibold text-gray-900">
+                        {room.customName || room.type} ({room.items?.length || 0} items)
+                      </summary>
+                      <div className="mt-4 space-y-2">
+                        {room.items?.map((item: RoomItem) => (
+                          <div key={item.id} className="text-sm text-gray-600 pl-4 border-l-2 border-gray-200">
+                            <div className="font-medium text-gray-900">{item.name}</div>
+                            <div className="text-xs mb-2">
+                              Qty: {item.quantity} {item.totalCuFt && `| Vol: ${Number(item.totalCuFt).toFixed(1)} cu ft`}
+                            </div>
+
+                            {/* Photo Thumbnails */}
+                            {item.images && item.images.length > 0 && (
+                              <div className="flex gap-2 mt-3 flex-wrap">
+                                {item.images.map((photo, idx) => (
+                                  <button
+                                    key={idx}
+                                    onClick={() => setViewingPhotosItem({ ...item, roomId: room.id })}
+                                    className="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-300 hover:border-blue-500 hover:shadow-md transition-all hover:scale-105"
+                                    title="Click to view all photos"
+                                  >
+                                    <Image
+                                      src={photo}
+                                      alt={`${item.name} photo ${idx + 1}`}
+                                      fill
+                                      className="object-contain"
+                                    />
+                                    {idx === 0 && (item.images?.length || 0) > 1 && (
+                                      <div className="absolute top-1 right-1 bg-black/50 text-white text-xs rounded px-1">
+                                        +{(item.images?.length || 0) - 1}
+                                      </div>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-4">
+              {!inventoryData.isLocked && (
+                <button
+                  onClick={handleLock}
+                  className="flex items-center gap-2 px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+                >
+                  <Lock className="w-5 h-5" />
+                  Lock Inventory
+                </button>
+              )}
+
+              <button
+                onClick={handlePushGHL}
+                className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+              >
+                <Send className="w-5 h-5" />
+                Push to GHL
+              </button>
+            </div>
+
+            {/* Photo Viewer Modal */}
+            {viewingPhotosItem && viewingPhotosItem.images && viewingPhotosItem.images.length > 0 && (
+              <PhotoViewerModal
+                token={inventoryId}
+                roomId={viewingPhotosItem.roomId || ''}
+                itemId={viewingPhotosItem.id}
+                itemName={viewingPhotosItem.name}
+                photos={viewingPhotosItem.images}
+                onClose={() => setViewingPhotosItem(null)}
+                onPhotosUpdated={() => {
+                  // Admin doesn't modify photos
+                  setViewingPhotosItem(null);
+                }}
+                readOnly={true}
+              />
+            )}
           </div>
-        )}
 
-        {/* Actions */}
-        <div className="flex gap-4">
-          {!inventoryData.isLocked && (
+          {/* Sidebar - Activities Panel */}
+          <div className="lg:col-span-1">
+            {/* Toggle Button */}
             <button
-              onClick={handleLock}
-              className="flex items-center gap-2 px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+              onClick={() => {
+                const opening = !showActivitySidebar;
+                setShowActivitySidebar(opening);
+                if (!opening) {
+                  // Closing the sidebar — record "viewed up to now" so next open starts fresh
+                  const now = new Date();
+                  setLastViewedAt(now);
+                  localStorage.setItem(`activities-viewed-${inventoryId}`, now.toISOString());
+                  setUnreadCount(0);
+                }
+              }}
+              className={`w-full mb-4 flex items-center justify-between px-4 py-3 rounded-lg shadow-md hover:shadow-lg transition-all ${
+                !showActivitySidebar && unreadCount > 0
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-white text-gray-900'
+              }`}
             >
-              <Lock className="w-5 h-5" />
-              Lock Inventory
+              <span className="font-semibold flex items-center gap-2">
+                {!showActivitySidebar && unreadCount > 0 && (
+                  <Bell className="w-4 h-4 animate-bounce" />
+                )}
+                {showActivitySidebar ? 'Hide' : 'Show'} Activities
+                {!showActivitySidebar && unreadCount > 0 && (
+                  <span className="inline-flex items-center justify-center w-5 h-5 text-xs font-bold bg-white text-indigo-700 rounded-full">
+                    {unreadCount}
+                  </span>
+                )}
+              </span>
+              {showActivitySidebar ? (
+                <ChevronRight className={`w-5 h-5 ${!showActivitySidebar && unreadCount > 0 ? 'text-white' : 'text-gray-600'}`} />
+              ) : (
+                <ChevronLeft className={`w-5 h-5 ${!showActivitySidebar && unreadCount > 0 ? 'text-white' : 'text-gray-600'}`} />
+              )}
             </button>
-          )}
 
-          <button
-            onClick={handlePushGHL}
-            className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
-          >
-            <Send className="w-5 h-5" />
-            Push to GHL
-          </button>
+            {/* Activities Panel */}
+            {showActivitySidebar && (
+              <div className="bg-white rounded-lg shadow-md overflow-hidden">
+                <RecentActivities
+                  inventoryId={inventoryId}
+                  lastViewedAt={lastViewedAt}
+                  onUnreadCount={setUnreadCount}
+                />
+              </div>
+            )}
+          </div>
         </div>
-
-        {/* Photo Viewer Modal */}
-        {viewingPhotosItem && viewingPhotosItem.images && viewingPhotosItem.images.length > 0 && (
-          <PhotoViewerModal
-            token={inventoryId}
-            roomId={viewingPhotosItem.roomId || ''}
-            itemId={viewingPhotosItem.id}
-            itemName={viewingPhotosItem.name}
-            photos={viewingPhotosItem.images}
-            onClose={() => setViewingPhotosItem(null)}
-            onPhotosUpdated={() => {
-              // Admin doesn't modify photos
-              setViewingPhotosItem(null);
-            }}
-            readOnly={true}
-          />
-        )}
       </main>
     </div>
   );

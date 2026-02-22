@@ -58,6 +58,13 @@ export class RoomsService {
       })
       .returning();
 
+    // Log the room creation
+    const roomName = customName || type.replace(/_/g, ' ');
+    await this.inventoryService.logAction(inventoryId, 'room_created', 'customer', {
+      roomName,
+      type,
+    });
+
     return room;
   }
 
@@ -82,6 +89,13 @@ export class RoomsService {
 
     await this.db.delete(roomItems).where(eq(roomItems.roomId, roomId));
     await this.db.delete(rooms).where(eq(rooms.id, roomId));
+
+    // Log the room deletion
+    const roomName = room.customName || room.type.replace(/_/g, ' ');
+    await this.inventoryService.logAction(room.inventoryId, 'room_deleted', 'customer', {
+      roomName,
+      type: room.type,
+    });
 
     return { deleted: true };
   }

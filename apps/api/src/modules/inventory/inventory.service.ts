@@ -87,6 +87,37 @@ export class InventoryService {
       );
     }
 
+    // Track what changed
+    const changes: Record<string, { old: unknown; new: unknown }> = {};
+
+    if (dto.customerName !== undefined && dto.customerName !== inventory.customerName) {
+      changes.customerName = { old: inventory.customerName, new: dto.customerName };
+    }
+    if (dto.customerEmail !== undefined && dto.customerEmail !== inventory.customerEmail) {
+      changes.customerEmail = { old: inventory.customerEmail, new: dto.customerEmail };
+    }
+    if (dto.customerPhone !== undefined && dto.customerPhone !== inventory.customerPhone) {
+      changes.customerPhone = { old: inventory.customerPhone, new: dto.customerPhone };
+    }
+    if (dto.moveDate !== undefined) {
+      const newMoveDate = dto.moveDate ? new Date(dto.moveDate) : null;
+      if (String(newMoveDate) !== String(inventory.moveDate)) {
+        changes.moveDate = {
+          old: inventory.moveDate ? new Date(inventory.moveDate).toLocaleDateString() : null,
+          new: newMoveDate ? newMoveDate.toLocaleDateString() : null,
+        };
+      }
+    }
+    if (dto.fromAddress !== undefined && dto.fromAddress !== inventory.fromAddress) {
+      changes.fromAddress = { old: inventory.fromAddress, new: dto.fromAddress };
+    }
+    if (dto.toAddress !== undefined && dto.toAddress !== inventory.toAddress) {
+      changes.toAddress = { old: inventory.toAddress, new: dto.toAddress };
+    }
+    if (dto.notes !== undefined && dto.notes !== inventory.notes) {
+      changes.notes = { old: inventory.notes, new: dto.notes };
+    }
+
     const [updated] = await this.db
       .update(inventories)
       .set({
@@ -102,6 +133,13 @@ export class InventoryService {
       })
       .where(eq(inventories.token, token))
       .returning();
+
+    // Log the update with change details
+    if (Object.keys(changes).length > 0) {
+      await this.logAction(inventory.id, 'inventory_updated', 'customer', {
+        changes,
+      });
+    }
 
     return updated;
   }
@@ -129,7 +167,17 @@ export class InventoryService {
       .returning();
 
     if (inventory?.id) {
-      await this.logAction(inventory.id, 'inventory_submitted', 'customer');
+      // Capture submission details for audit log
+      const submissionDetails = {
+        customerName: inventory.customerName,
+        moveDate: inventory.moveDate,
+        fromAddress: inventory.fromAddress,
+        toAddress: inventory.toAddress,
+        totalItems: inventory.totalItems || 0,
+        totalCuFt: Number(inventory.totalCuFt || 0).toFixed(1),
+        totalWeight: Number(inventory.totalWeight || 0).toFixed(0),
+      };
+      await this.logAction(inventory.id, 'inventory_submitted', 'customer', submissionDetails);
     }
 
     return submitted;

@@ -92,4 +92,16 @@ export class AdminController {
     await this.adminService.addInternalNote(inventoryId, note);
     return { success: true, message: 'Note added' };
   }
+
+  @Get(':inventoryId/audit-logs')
+  @ApiParam({ name: 'inventoryId', type: 'string', description: 'The inventory ID' })
+  async getAuditLogs(
+    @Headers('x-admin-key') apiKey: string,
+    @Param('inventoryId') inventoryId: string,
+    @Query('limit') limit = '20',
+  ) {
+    this.adminService.validateAdminKey(apiKey);
+    const logs = await this.adminService.getAuditLogs(inventoryId, parseInt(limit));
+    return { success: true, data: logs };
+  }
 }

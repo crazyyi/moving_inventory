@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { inventoryAPI } from '@/lib/api-client';
 import { useAPICall } from '@/lib/hooks';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Copy, Check, ArrowRight, KeyRound } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 
@@ -21,7 +21,17 @@ type FormData = {
 export default function CreateInventory() {
   const router = useRouter();
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>();
+  const [createdToken, setCreatedToken] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const callAPI = useAPICall();
+
+  const handleCopy = async () => {
+    if (!createdToken) return;
+    await navigator.clipboard.writeText(createdToken);
+    setCopied(true);
+    toast.success('Token copied!');
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const onSubmit = async (data: FormData) => {
     const result = await callAPI(
@@ -30,11 +40,63 @@ export default function CreateInventory() {
     );
 
     if (result?.data?.data?.token) {
-      setTimeout(() => {
-        router.push(`/inventory/${result.data.data.token}`);
-      }, 500);
+      setCreatedToken(result.data.data.token);
     }
   };
+
+  // ── Token reveal screen ──────────────────────────────────────────────────
+  if (createdToken) {
+    return (
+      <div className="min-h-screen bg-linear-to-br from-blue-50 to-indigo-50 flex items-center justify-center px-4">
+        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-lg w-full text-center">
+          {/* Icon */}
+          <div className="mx-auto mb-6 w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
+            <KeyRound className="w-8 h-8 text-green-600" />
+          </div>
+
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Inventory Created!</h1>
+          <p className="text-gray-600 mb-8">
+            Save your access token — you&apos;ll need it to return to your inventory later.
+          </p>
+
+          {/* Token display */}
+          <div className="mb-6">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Your Access Token</p>
+            <div className="flex items-center gap-2 bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl px-4 py-4">
+              <code className="flex-1 text-lg font-mono font-bold text-indigo-700 tracking-widest break-all text-left select-all">
+                {createdToken}
+              </code>
+              <button
+                onClick={handleCopy}
+                className={`shrink-0 p-2 rounded-lg transition-colors ${
+                  copied
+                    ? 'bg-green-100 text-green-600'
+                    : 'bg-gray-200 hover:bg-indigo-100 text-gray-600 hover:text-indigo-700'
+                }`}
+                title="Copy token"
+              >
+                {copied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Warning */}
+          <div className="mb-8 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 text-left">
+            <strong>Important:</strong> This token is your only way to access this inventory. Keep it somewhere safe — you can also find it in any emails we send you.
+          </div>
+
+          {/* CTA */}
+          <button
+            onClick={() => router.push(`/inventory/${createdToken}`)}
+            className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-semibold text-lg"
+          >
+            Go to My Inventory
+            <ArrowRight className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-linear-to-br from-blue-50 to-indigo-50">
