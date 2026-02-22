@@ -4,10 +4,14 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "concurrently --names \"Backend,Frontend\" --prefix \"[{name}]\" --prefix-colors \"cyan,magenta\" \"pnpm --filter backend dev\" \"pnpm --filter web dev\""
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "packageManager": "pnpm@10.5.2"
+  "packageManager": "pnpm@10.5.2",
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
 }
